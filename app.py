@@ -20,12 +20,8 @@ st.set_page_config(
 
 # --- KONSTANTA PATH ---
 DATA_PATH = 'data/df_cleaned.csv'
-GEOJSON_PATH = 'data/prov 34.geojson' # Sesuaikan dengan nama file GeoJSON Anda
-MODEL_PATH = 'model/xgb_poverty_model.pkl'
-SCALER_PATH = 'model/scaler.pkl'
-GEOJSON_PROVINCE_KEY = 'feature.properties.name' # Sesuaikan dengan properti di file GeoJSON Anda
-# Urutan fitur harus sama persis dengan saat model dilatih
-FEATURE_ORDER = ['Pengeluaran Per Kapita', 'Rata-Rata Lama Sekolah', 'APM SMP', 'Kepadatan Penduduk']
+GEOJSON_PATH = 'data/prov 34.geojson'
+GEOJSON_PROVINCE_KEY = 'feature.properties.name'
 
 
 
@@ -88,19 +84,6 @@ def load_data(data_path):
     except FileNotFoundError:
         return None, None
 
-@st.cache_resource
-def load_model_and_scaler(model_path, scaler_path):
-    """
-    Memuat model prediksi dan scaler.
-    Menggunakan cache resource karena model adalah objek berat.
-    """
-    try:
-        model = joblib.load(model_path)
-        scaler = joblib.load(scaler_path)
-        return model, scaler
-    except FileNotFoundError:
-        return None, None
-
 # --- HALAMAN ANALISIS DATA EKSPLORASI (EDA) ---
 
 def run_eda_page():
@@ -148,61 +131,6 @@ def run_eda_page():
     else:
         st.error(f"❌ **File tidak ditemukan:** Pastikan file `{os.path.basename(DATA_PATH)}` berada di dalam folder `data/`.")
 
-# --- HALAMAN PREDIKSI KEMISKINAN ---
-
-def run_prediction_page():
-    """
-    Menjalankan halaman untuk prediksi kemiskinan.
-    """
-    st.header("🔮 Prediksi Persentase Kemiskinan")
-    st.write("Masukkan nilai-nilai fitur di bawah ini untuk memprediksi persentase kemiskinan (P0) di suatu wilayah.")
-
-    
-    # Memuat model dan scaler
-    model, scaler = load_model_and_scaler(MODEL_PATH, SCALER_PATH)
-
-    if model is not None and scaler is not None:
-        # Membuat form input di sidebar
-        with st.sidebar:
-            st.header("Input Fitur Prediksi")
-            # Slider untuk input pengguna
-            # Rentang nilai disesuaikan dari analisis data (misal: min dan max dari data training)
-            pengeluaran = st.slider('Pengeluaran Per Kapita (Ribu Rupiah/Bulan)', 800.0, 2500.0, 1200.0, 50.0)
-            lama_sekolah = st.slider('Rata-Rata Lama Sekolah (Tahun)', 5.0, 12.0, 8.5, 0.1)
-            apm_smp = st.slider('APM SMP (%)', 60.0, 100.0, 90.0, 0.5)
-            kepadatan_penduduk = st.slider('Kepadatan Penduduk (Jiwa/km²)', 10.0, 1000.0, 150.0, 10.0)
-
-        # Tombol untuk melakukan prediksi
-        if st.button('🚀 Prediksi Persentase Kemiskinan'):
-            # Membuat DataFrame dari input
-            input_data = pd.DataFrame({
-                'Pengeluaran Per Kapita': [pengeluaran],
-                'Rata-Rata Lama Sekolah': [lama_sekolah],
-                'APM SMP': [apm_smp],
-                'Kepadatan Penduduk': [kepadatan_penduduk]
-            })
-            
-            # Pastikan urutan kolom sesuai dengan yang diharapkan oleh model
-            input_data = input_data[FEATURE_ORDER]
-
-            # Melakukan penskalaan pada data input
-            scaled_input = scaler.transform(input_data)
-
-            # Melakukan prediksi
-            prediction = model.predict(scaled_input) # type: ignore
-            predicted_p0 = prediction[0]
-
-            # Menampilkan hasil prediksi
-            st.success(f"✅ **Prediksi Berhasil Dibuat!**")
-            st.metric(
-                label="Prediksi Persentase Kemiskinan (P0)",
-                value=f"{predicted_p0:.2f}%"
-            )
-            st.info("**Catatan:** Prediksi ini didasarkan pada model XGBoost yang dilatih pada data historis. Hasil ini adalah estimasi dan bukan angka absolut.")
-
-    else:
-        st.error(f"❌ **File model/scaler tidak ditemukan:** Pastikan file `{os.path.basename(MODEL_PATH)}` dan `{os.path.basename(SCALER_PATH)}` berada di dalam folder `model/`.")
-
 # --- HALAMAN VISUALISASI PETA ---
 
 def run_map_page():
@@ -248,14 +176,19 @@ def run_map_page():
         for feature in choropleth.geojson.data['features']:
             province_name = feature['properties'].get(GEOJSON_PROVINCE_KEY.split('.')[-1])
             if province_name in df_provinsi_indexed.index:
-                province_data = df_provinsi_indexed.loc[province_name]
+                province_data = df_provinsi_indexed.loc[province_name] # type: ignore
                 popup_content = f"""
-                <b>Provinsi: {province_name}</b><hr style="margin: 5px 0;">
-                Rata-rata Persentase Kemiskinan: <b>{province_data.get('Persentase Kemiskinan (P0)', 0):.2f}%</b><br>
-                Rata-rata Pengeluaran Per Kapita: <b>Rp {province_data.get('Pengeluaran Per Kapita', 0):,.0f}</b><br>
-                Rata-rata Lama Sekolah: <b>{province_data.get('Rata-Rata Lama Sekolah', 0):.1f} tahun</b><br>
-                Rata-rata APM SMP (proksi IPM): <b>{province_data.get('APM SMP', 0):.1f}</b><br>
-                Rata-rata PDRB: <b>Rp {province_data.get('PDRB', 0):,.0f}</b>
+                <div style="font-family: Arial, sans-serif; width: 280px;">
+                <h4 style="margin-bottom:10px; text-align:center;">{province_name}</h4>
+                <table style="width:100%;">
+                    <tr><td style="padding: 4px;">Persentase Kemiskinan (P0)</td><td style="padding: 4px; text-align: right;"><b>{province_data.get('Persentase Kemiskinan (P0)', 0):.2f}%</b></td></tr>
+                    <tr><td style="padding: 4px;">Pengeluaran Per Kapita</td><td style="padding: 4px; text-align: right;"><b>Rp {province_data.get('Pengeluaran Per Kapita', 0):,.0f}</b></td></tr>
+                    <tr><td style="padding: 4px;">Rata-Rata Lama Sekolah</td><td style="padding: 4px; text-align: right;"><b>{province_data.get('Rata-Rata Lama Sekolah', 0):.1f} thn</b></td></tr>
+                    <tr><td style="padding: 4px;">APM SMP (proksi IPM)</td><td style="padding: 4px; text-align: right;"><b>{province_data.get('APM SMP', 0):.1f}</b></td></tr>
+                    <tr><td style="padding: 4px;">PDRB</td><td style="padding: 4px; text-align: right;"><b>Rp {province_data.get('PDRB', 0):,.0f}</b></td></tr>
+                </table>
+                <p style="font-size: 10px; text-align: center; margin-top: 10px;"><i>*Data merupakan rata-rata dari kab/kota</i></p>
+                </div>
                 """
                 folium.GeoJson(
                     feature,
@@ -273,17 +206,15 @@ def main():
     """
     Fungsi utama untuk menjalankan aplikasi Streamlit.
     """
-    st.title("🇮🇩 Dashboard Analisis dan Prediksi Kemiskinan di Indonesia")
+    st.title("🇮🇩 Dashboard Analisis Kemiskinan di Indonesia")
 
     # Navigasi sidebar
     st.sidebar.title("Navigasi")
-    page_options = ["Prediksi Kemiskinan", "Visualisasi Peta", "Analisis Data Eksplorasi"]
+    page_options = ["Visualisasi Peta", "Analisis Data Eksplorasi"]
     selected_page = st.sidebar.selectbox("Pilih Halaman", page_options)
 
     # Menjalankan halaman yang dipilih
-    if selected_page == "Prediksi Kemiskinan":
-        run_prediction_page()
-    elif selected_page == "Visualisasi Peta":
+    if selected_page == "Visualisasi Peta":
         run_map_page()
     elif selected_page == "Analisis Data Eksplorasi":
         run_eda_page()
