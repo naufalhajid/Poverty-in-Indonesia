@@ -98,8 +98,6 @@ def run_eda_page():
     """
     Menjalankan halaman untuk Analisis Data Eksplorasi.
     """
-    st.header("📊 Analisis Data Eksplorasi Kemiskinan")
-    st.write("Halaman ini menampilkan analisis dari data yang digunakan untuk melatih model.")
     st.header("📊 Analisis Data Eksplorasi")
     st.write("Jelajahi hubungan dan distribusi data yang digunakan dalam analisis ini.")
 
@@ -107,21 +105,9 @@ def run_eda_page():
     df_processed, _ = load_data(DATA_PATH)
 
     if df_processed is not None:
-        st.subheader("Pratinjau Data")
-        st.dataframe(df_processed.head())
         # Menggunakan tab untuk layout yang lebih bersih
         tab1, tab2, tab3 = st.tabs(["📈 Ringkasan Statistik", "🔗 Hubungan Antar Variabel", "⚖️ Distribusi Fitur"])
 
-        st.subheader("Heatmap Korelasi Antar Variabel")
-        st.write("Heatmap ini menunjukkan bagaimana variabel-variabel saling berhubungan. Nilai mendekati 1 atau -1 menunjukkan korelasi yang kuat.")
-        
-        # Membuat plot korelasi
-        fig, ax = plt.subplots(figsize=(12, 8))
-        # Memilih hanya kolom numerik untuk menghindari ValueError
-        numeric_df = df_processed.select_dtypes(include=np.number)
-        corr_matrix = numeric_df.corr()
-        sns.heatmap(corr_matrix, annot=True, cmap='coolwarm', fmt=".2f", ax=ax)
-        st.pyplot(fig)
         with tab1:
             st.subheader("Metrik Utama")
             # Menghitung metrik utama
@@ -129,29 +115,14 @@ def run_eda_page():
             max_poverty_row = df_processed.loc[df_processed['Persentase Kemiskinan (P0)'].idxmax()]
             min_poverty_row = df_processed.loc[df_processed['Persentase Kemiskinan (P0)'].idxmin()]
 
-        st.subheader("Distribusi Fitur Terhadap Persentase Kemiskinan (P0)")
-        st.write("Scatter plot di bawah ini memvisualisasikan hubungan antara setiap fitur input dengan persentase kemiskinan.")
-        
-        # Kolom fitur untuk visualisasi
-        all_feature_cols = ['Pengeluaran Per Kapita', 'Rata-Rata Lama Sekolah', 'Indeks Pembangunan Manusia']
-        # Filter fitur yang benar-benar ada di DataFrame untuk menghindari error
-        available_feature_cols = [col for col in all_feature_cols if col in df_processed.columns]
             col1, col2, col3 = st.columns(3)
             col1.metric("Rata-rata Kemiskinan", f"{avg_poverty:.2f}%")
             col2.metric("Kemiskinan Tertinggi", f"{max_poverty_row['Persentase Kemiskinan (P0)']:.2f}%", f"{max_poverty_row['Kab/Kota']}")
             col3.metric("Kemiskinan Terendah", f"{min_poverty_row['Persentase Kemiskinan (P0)']:.2f}%", f"{min_poverty_row['Kab/Kota']}")
 
-        cols = st.columns(2)
             st.subheader("Pratinjau Data")
             st.dataframe(df_processed.head())
 
-        # Loop untuk membuat scatter plot secara dinamis
-        for i, feature in enumerate(available_feature_cols):
-            with cols[i % 2]:
-                fig, ax = plt.subplots(figsize=(6, 5))
-                sns.scatterplot(data=df_processed, x=feature, y='Persentase Kemiskinan (P0)', ax=ax, alpha=0.6)
-                ax.set_title(f'P0 vs {feature}')
-                st.pyplot(fig)
             with st.expander("Lihat Ringkasan Statistik Lengkap"):
                 st.dataframe(df_processed.describe())
 
