@@ -190,23 +190,23 @@ def run_map_page():
         # Membuat peta Choropleth
         folium.Choropleth(
             geo_data=geojson_data,
-            name='IPM Choropleth',
+            name='Poverty Choropleth',
             data=df_provinsi,
-            columns=['Provinsi', 'Indeks Pembangunan Manusia'],
+            columns=['Provinsi', 'Persentase Kemiskinan (P0)'],
             key_on=GEOJSON_PROVINCE_KEY,
-            fill_color='YlGnBu',
+            fill_color='YlOrRd',
             fill_opacity=0.8,
             line_opacity=0.4,
             line_color='black',
             line_weight=0.5,
-            legend_name='Indeks Pembangunan Manusia (Poin)',
+            legend_name='Persentase Penduduk Miskin (%)',
             highlight=True
         ).add_to(m)
 
         # --- 5. Buat Objek Tooltip dan Popup ---
         tooltip = folium.features.GeoJsonTooltip(
-            fields=['name', 'IPM_DISPLAY'],
-            aliases=['Provinsi:', 'Indeks Pembangunan Manusia:'],
+            fields=['name', 'PENDUDUK_MISKIN'],
+            aliases=['Provinsi:', 'Penduduk Miskin:'],
             localize=True,
             sticky=False,
             style=("background-color: white; color: #333333; font-family: arial; font-size: 12px; padding: 10px;")
