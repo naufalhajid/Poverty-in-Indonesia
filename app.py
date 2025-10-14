@@ -26,6 +26,36 @@ SCALER_PATH = 'model/scaler.pkl'
 GEOJSON_PROVINCE_KEY = 'feature.properties.name' # Sesuaikan dengan properti di file GeoJSON Anda
 
 
+@st.cache_data
+def preprocess_data(df):
+    """
+    Membersihkan, memproses, dan mengagregasi DataFrame.
+    """
+    # Peta untuk mengganti nama kolom yang panjang
+    column_mapping = {
+        'Provinsi': 'Provinsi',
+        'Persentase Penduduk Miskin (P0) Menurut Kabupaten/Kota (Persen)': 'Persentase Kemiskinan (P0)',
+        'Pengeluaran per Kapita Disesuaikan (Ribu Rupiah/Orang/Tahun)': 'Pengeluaran Per Kapita',
+        'Rata-rata Lama Sekolah Penduduk 15+ (Tahun)': 'Rata-Rata Lama Sekolah',
+        'Indeks Pembangunan Manusia': 'APM SMP',  # Menggunakan IPM sebagai proksi untuk APM SMP karena keduanya mengukur pembangunan manusia
+        # 'Kepadatan Penduduk' tidak memiliki proksi langsung di CSV, akan diabaikan jika tidak ada.
+    }
+
+    # Filter kolom yang ada di DataFrame untuk menghindari KeyError
+    valid_columns = {k: v for k, v in column_mapping.items() if k in df.columns}
+    df_processed = df[list(valid_columns.keys())].copy()
+    df_processed.rename(columns=valid_columns, inplace=True)
+
+    # Konversi Pengeluaran Per Kapita dari tahunan ke bulanan (dibagi 12)
+    if 'Pengeluaran Per Kapita' in df_processed.columns:
+        df_processed['Pengeluaran Per Kapita'] = df_processed['Pengeluaran Per Kapita'] / 12
+
+    # Agregasi data ke tingkat provinsi untuk peta
+    df_provinsi = df_processed.groupby('Provinsi').mean(numeric_only=True).reset_index()
+
+    return df_processed, df_provinsi
+
+
 # --- FUNGSI UNTUK MEMUAT DATA GEOJSON ---
 @st.cache_data
 def load_geojson(geojson_path):
@@ -43,14 +73,16 @@ def load_geojson(geojson_path):
 @st.cache_data
 def load_data(data_path):
     """
-    Memuat data kemiskinan dari file CSV.
+    Memuat dan memproses data kemiskinan dari file CSV.
     Menggunakan cache untuk performa.
     """
     try:
         df = pd.read_csv(data_path)
-        return df
+        # Lakukan pra-pemrosesan setelah memuat
+        df_processed, df_provinsi = preprocess_data(df)
+        return df_processed, df_provinsi
     except FileNotFoundError:
-        return None
+        return None, None
 
 @st.cache_resource
 def load_model_and_scaler(model_path, scaler_path):
@@ -75,18 +107,20 @@ def run_eda_page():
     st.write("Halaman ini menampilkan analisis dari data yang digunakan untuk melatih model.")
 
     # Memuat data riil
-    df = load_data(DATA_PATH)
+    df_processed, _ = load_data(DATA_PATH)
 
-    if df is not None:
+    if df_processed is not None:
         st.subheader("Pratinjau Data")
-        st.dataframe(df.head())
+        st.dataframe(df_processed.head())
 
         st.subheader("Heatmap Korelasi Antar Variabel")
         st.write("Heatmap ini menunjukkan bagaimana variabel-variabel saling berhubungan. Nilai mendekati 1 atau -1 menunjukkan korelasi yang kuat.")
         
         # Membuat plot korelasi
         fig, ax = plt.subplots(figsize=(12, 8))
-        corr_matrix = df.corr()
+        # Memilih hanya kolom numerik untuk menghindari ValueError
+        numeric_df = df_processed.select_dtypes(include=np.number)
+        corr_matrix = numeric_df.corr()
         sns.heatmap(corr_matrix, annot=True, cmap='coolwarm', fmt=".2f", ax=ax)
         st.pyplot(fig)
 
@@ -101,7 +135,7 @@ def run_eda_page():
         for i, feature in enumerate(feature_cols):
             with cols[i % 2]:
                 fig, ax = plt.subplots(figsize=(6, 5))
-                sns.scatterplot(data=df, x=feature, y='Persentase Kemiskinan (P0)', ax=ax)
+                sns.scatterplot(data=df_processed, x=feature, y='Persentase Kemiskinan (P0)', ax=ax)
                 ax.set_title(f'P0 vs {feature}')
                 st.pyplot(fig)
     else:
@@ -169,10 +203,17 @@ def run_map_page():
     st.write("Peta ini memvisualisasikan persentase kemiskinan (P0) di setiap provinsi. Klik pada sebuah provinsi untuk melihat detailnya.")
 
     # Memuat data
-    df = load_data(DATA_PATH)
+    _, df_provinsi = load_data(DATA_PATH)
     geojson_data = load_geojson(GEOJSON_PATH)
 
-    if df is not None and geojson_data is not None:
+    if df_provinsi is not None and geojson_data is not None:
+        # Validasi: Pastikan kolom yang diperlukan untuk peta ada di DataFrame
+        required_map_cols = ['Provinsi', 'Persentase Kemiskinan (P0)']
+        if not all(col in df_provinsi.columns for col in required_map_cols):
+            st.error(f"❌ **Data Tidak Lengkap:** DataFrame tidak memiliki kolom yang diperlukan untuk membuat peta: `{', '.join(required_map_cols)}`.")
+            st.info("Mohon periksa kembali file `df_cleaned.csv` dan pastikan nama kolomnya sesuai dengan yang diharapkan dalam fungsi `preprocess_data`.")
+            return
+
         # Membuat peta folium
         # Koordinat tengah Indonesia
         map_center = [-2.548926, 118.0148634]
@@ -182,8 +223,8 @@ def run_map_page():
         choropleth = folium.Choropleth(
             geo_data=GEOJSON_PATH,
             name='choropleth',
-            data=df,
-            columns=['Provinsi', 'Persentase Kemiskinan (P0)'],
+            data=df_provinsi,
+            columns=['Provinsi', 'Persentase Kemiskinan (P0)'], # Gunakan data provinsi yang sudah diagregasi
             key_on=GEOJSON_PROVINCE_KEY,
             fill_color='YlOrRd',
             fill_opacity=0.7,
@@ -193,11 +234,11 @@ def run_map_page():
 
         # Menambahkan popup dengan informasi detail
         # Pastikan kolom 'Provinsi' di df cocok dengan 'feature.properties.state' di GeoJSON
-        df_indexed = df.set_index('Provinsi')
+        df_provinsi_indexed = df_provinsi.set_index('Provinsi')
         for feature in choropleth.geojson.data['features']:
             province_name = feature['properties'].get(GEOJSON_PROVINCE_KEY.split('.')[-1])
-            if province_name in df_indexed.index:
-                province_data = df_indexed.loc[province_name]
+            if province_name in df_provinsi_indexed.index:
+                province_data = df_provinsi_indexed.loc[province_name]
                 popup_content = f"""
                 <b>Provinsi: {province_name}</b><br>
                 Persentase Kemiskinan: {province_data['Persentase Kemiskinan (P0)']:.2f}%<br>
