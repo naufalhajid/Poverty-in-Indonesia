@@ -7,6 +7,7 @@ import joblib
 import seaborn as sns
 import matplotlib.pyplot as plt
 import folium
+import altair as alt
 import requests
 from streamlit_folium import st_folium
 import os
@@ -99,6 +100,8 @@ def run_eda_page():
     """
     st.header("📊 Analisis Data Eksplorasi Kemiskinan")
     st.write("Halaman ini menampilkan analisis dari data yang digunakan untuk melatih model.")
+    st.header("📊 Analisis Data Eksplorasi")
+    st.write("Jelajahi hubungan dan distribusi data yang digunakan dalam analisis ini.")
 
     # Memuat data riil
     df_processed, _ = load_data(DATA_PATH)
@@ -106,6 +109,8 @@ def run_eda_page():
     if df_processed is not None:
         st.subheader("Pratinjau Data")
         st.dataframe(df_processed.head())
+        # Menggunakan tab untuk layout yang lebih bersih
+        tab1, tab2, tab3 = st.tabs(["📈 Ringkasan Statistik", "🔗 Hubungan Antar Variabel", "⚖️ Distribusi Fitur"])
 
         st.subheader("Heatmap Korelasi Antar Variabel")
         st.write("Heatmap ini menunjukkan bagaimana variabel-variabel saling berhubungan. Nilai mendekati 1 atau -1 menunjukkan korelasi yang kuat.")
@@ -117,6 +122,12 @@ def run_eda_page():
         corr_matrix = numeric_df.corr()
         sns.heatmap(corr_matrix, annot=True, cmap='coolwarm', fmt=".2f", ax=ax)
         st.pyplot(fig)
+        with tab1:
+            st.subheader("Metrik Utama")
+            # Menghitung metrik utama
+            avg_poverty = df_processed['Persentase Kemiskinan (P0)'].mean()
+            max_poverty_row = df_processed.loc[df_processed['Persentase Kemiskinan (P0)'].idxmax()]
+            min_poverty_row = df_processed.loc[df_processed['Persentase Kemiskinan (P0)'].idxmin()]
 
         st.subheader("Distribusi Fitur Terhadap Persentase Kemiskinan (P0)")
         st.write("Scatter plot di bawah ini memvisualisasikan hubungan antara setiap fitur input dengan persentase kemiskinan.")
@@ -125,8 +136,14 @@ def run_eda_page():
         all_feature_cols = ['Pengeluaran Per Kapita', 'Rata-Rata Lama Sekolah', 'Indeks Pembangunan Manusia']
         # Filter fitur yang benar-benar ada di DataFrame untuk menghindari error
         available_feature_cols = [col for col in all_feature_cols if col in df_processed.columns]
+            col1, col2, col3 = st.columns(3)
+            col1.metric("Rata-rata Kemiskinan", f"{avg_poverty:.2f}%")
+            col2.metric("Kemiskinan Tertinggi", f"{max_poverty_row['Persentase Kemiskinan (P0)']:.2f}%", f"{max_poverty_row['Kab/Kota']}")
+            col3.metric("Kemiskinan Terendah", f"{min_poverty_row['Persentase Kemiskinan (P0)']:.2f}%", f"{min_poverty_row['Kab/Kota']}")
 
         cols = st.columns(2)
+            st.subheader("Pratinjau Data")
+            st.dataframe(df_processed.head())
 
         # Loop untuk membuat scatter plot secara dinamis
         for i, feature in enumerate(available_feature_cols):
@@ -135,6 +152,53 @@ def run_eda_page():
                 sns.scatterplot(data=df_processed, x=feature, y='Persentase Kemiskinan (P0)', ax=ax, alpha=0.6)
                 ax.set_title(f'P0 vs {feature}')
                 st.pyplot(fig)
+            with st.expander("Lihat Ringkasan Statistik Lengkap"):
+                st.dataframe(df_processed.describe())
+
+        with tab2:
+            st.subheader("Scatter Plot Interaktif")
+            st.write("Pilih variabel untuk sumbu X dan Y untuk melihat hubungannya.")
+            
+            numeric_cols = df_processed.select_dtypes(include=np.number).columns.tolist()
+            
+            col1, col2 = st.columns(2)
+            with col1:
+                x_axis = st.selectbox("Pilih Variabel Sumbu X", options=numeric_cols, index=numeric_cols.index('Pengeluaran Per Kapita'))
+            with col2:
+                y_axis = st.selectbox("Pilih Variabel Sumbu Y", options=numeric_cols, index=numeric_cols.index('Persentase Kemiskinan (P0)'))
+
+            scatter_plot = alt.Chart(df_processed).mark_circle(size=60, opacity=0.7).encode(
+                x=alt.X(x_axis, scale=alt.Scale(zero=False)),
+                y=alt.Y(y_axis, scale=alt.Scale(zero=False)),
+                tooltip=['Provinsi', 'Kab/Kota', x_axis, y_axis]
+            ).interactive()
+
+            st.altair_chart(scatter_plot, use_container_width=True)
+
+            st.subheader("Heatmap Korelasi")
+            st.write("Heatmap ini menunjukkan korelasi linear antar variabel numerik.")
+            fig, ax = plt.subplots(figsize=(14, 10))
+            numeric_df = df_processed.select_dtypes(include=np.number)
+            corr_matrix = numeric_df.corr()
+            sns.heatmap(corr_matrix, annot=True, cmap='coolwarm', fmt=".2f", ax=ax, annot_kws={"size": 8})
+            st.pyplot(fig)
+
+        with tab3:
+            st.subheader("Histogram Distribusi Fitur")
+            st.write("Pilih fitur untuk melihat distribusinya.")
+            
+            hist_feature = st.selectbox("Pilih Fitur", options=numeric_cols, index=numeric_cols.index('Persentase Kemiskinan (P0)'))
+            
+            histogram = alt.Chart(df_processed).mark_bar().encode(
+                alt.X(hist_feature, bin=alt.Bin(maxbins=30), title=hist_feature),
+                alt.Y('count()', title='Jumlah Kabupaten/Kota'),
+                tooltip=[alt.Tooltip(hist_feature, bin=True), 'count()']
+            ).properties(
+                title=f'Distribusi {hist_feature}'
+            )
+            
+            st.altair_chart(histogram, use_container_width=True)
+
     else:
         st.error(f"❌ **File tidak ditemukan:** Pastikan file `{os.path.basename(DATA_PATH)}` berada di dalam folder `data/`.")
 
