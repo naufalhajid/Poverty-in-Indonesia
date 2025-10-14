@@ -24,6 +24,9 @@ GEOJSON_PATH = 'data/prov 34.geojson' # Sesuaikan dengan nama file GeoJSON Anda
 MODEL_PATH = 'model/xgb_poverty_model.pkl'
 SCALER_PATH = 'model/scaler.pkl'
 GEOJSON_PROVINCE_KEY = 'feature.properties.name' # Sesuaikan dengan properti di file GeoJSON Anda
+# Urutan fitur harus sama persis dengan saat model dilatih
+FEATURE_ORDER = ['Pengeluaran Per Kapita', 'Rata-Rata Lama Sekolah', 'APM SMP', 'Kepadatan Penduduk']
+
 
 
 @st.cache_data
@@ -38,7 +41,8 @@ def preprocess_data(df):
         'Pengeluaran per Kapita Disesuaikan (Ribu Rupiah/Orang/Tahun)': 'Pengeluaran Per Kapita',
         'Rata-rata Lama Sekolah Penduduk 15+ (Tahun)': 'Rata-Rata Lama Sekolah',
         'Indeks Pembangunan Manusia': 'APM SMP',  # Menggunakan IPM sebagai proksi untuk APM SMP karena keduanya mengukur pembangunan manusia
-        # 'Kepadatan Penduduk' tidak memiliki proksi langsung di CSV, akan diabaikan jika tidak ada.
+        'PDRB atas Dasar Harga Konstan menurut Pengeluaran (Rupiah)': 'PDRB',
+        # 'Kepadatan Penduduk' tidak ada di CSV, tetapi didefinisikan untuk konsistensi
     }
 
     # Filter kolom yang ada di DataFrame untuk menghindari KeyError
@@ -128,14 +132,17 @@ def run_eda_page():
         st.write("Scatter plot di bawah ini memvisualisasikan hubungan antara setiap fitur input dengan persentase kemiskinan.")
         
         # Kolom fitur untuk visualisasi
-        feature_cols = ['Pengeluaran Per Kapita', 'Rata-Rata Lama Sekolah', 'APM SMP', 'Kepadatan Penduduk']
+        all_feature_cols = ['Pengeluaran Per Kapita', 'Rata-Rata Lama Sekolah', 'APM SMP', 'Kepadatan Penduduk']
+        # Filter fitur yang benar-benar ada di DataFrame untuk menghindari error
+        available_feature_cols = [col for col in all_feature_cols if col in df_processed.columns]
+
         cols = st.columns(2)
 
         # Loop untuk membuat scatter plot secara dinamis
-        for i, feature in enumerate(feature_cols):
+        for i, feature in enumerate(available_feature_cols):
             with cols[i % 2]:
                 fig, ax = plt.subplots(figsize=(6, 5))
-                sns.scatterplot(data=df_processed, x=feature, y='Persentase Kemiskinan (P0)', ax=ax)
+                sns.scatterplot(data=df_processed, x=feature, y='Persentase Kemiskinan (P0)', ax=ax, alpha=0.6)
                 ax.set_title(f'P0 vs {feature}')
                 st.pyplot(fig)
     else:
@@ -174,12 +181,15 @@ def run_prediction_page():
                 'APM SMP': [apm_smp],
                 'Kepadatan Penduduk': [kepadatan_penduduk]
             })
+            
+            # Pastikan urutan kolom sesuai dengan yang diharapkan oleh model
+            input_data = input_data[FEATURE_ORDER]
 
             # Melakukan penskalaan pada data input
             scaled_input = scaler.transform(input_data)
 
             # Melakukan prediksi
-            prediction = model.predict(scaled_input)
+            prediction = model.predict(scaled_input) # type: ignore
             predicted_p0 = prediction[0]
 
             # Menampilkan hasil prediksi
@@ -240,12 +250,12 @@ def run_map_page():
             if province_name in df_provinsi_indexed.index:
                 province_data = df_provinsi_indexed.loc[province_name]
                 popup_content = f"""
-                <b>Provinsi: {province_name}</b><br>
-                Persentase Kemiskinan: {province_data['Persentase Kemiskinan (P0)']:.2f}%<br>
-                Pengeluaran Per Kapita: Rp {province_data['Pengeluaran Per Kapita']:,.0f}<br>
-                Rata-Rata Lama Sekolah: {province_data['Rata-Rata Lama Sekolah']:.1f} tahun<br>
-                APM SMP: {province_data['APM SMP']:.1f}%<br>
-                Kepadatan Penduduk: {province_data['Kepadatan Penduduk']:.1f} jiwa/km²
+                <b>Provinsi: {province_name}</b><hr style="margin: 5px 0;">
+                Rata-rata Persentase Kemiskinan: <b>{province_data.get('Persentase Kemiskinan (P0)', 0):.2f}%</b><br>
+                Rata-rata Pengeluaran Per Kapita: <b>Rp {province_data.get('Pengeluaran Per Kapita', 0):,.0f}</b><br>
+                Rata-rata Lama Sekolah: <b>{province_data.get('Rata-Rata Lama Sekolah', 0):.1f} tahun</b><br>
+                Rata-rata APM SMP (proksi IPM): <b>{province_data.get('APM SMP', 0):.1f}</b><br>
+                Rata-rata PDRB: <b>Rp {province_data.get('PDRB', 0):,.0f}</b>
                 """
                 folium.GeoJson(
                     feature,
