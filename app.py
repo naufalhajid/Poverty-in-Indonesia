@@ -33,12 +33,16 @@ def preprocess_data(df):
     # Peta untuk mengganti nama kolom yang panjang
     column_mapping = {
         'Provinsi': 'Provinsi',
+        'Indeks Pembangunan Manusia': 'Indeks Pembangunan Manusia',
         'Persentase Penduduk Miskin (P0) Menurut Kabupaten/Kota (Persen)': 'Persentase Kemiskinan (P0)',
-        'Pengeluaran per Kapita Disesuaikan (Ribu Rupiah/Orang/Tahun)': 'Pengeluaran Per Kapita',
         'Rata-rata Lama Sekolah Penduduk 15+ (Tahun)': 'Rata-Rata Lama Sekolah',
-        'Indeks Pembangunan Manusia': 'APM SMP',  # Menggunakan IPM sebagai proksi untuk APM SMP karena keduanya mengukur pembangunan manusia
+        'Pengeluaran per Kapita Disesuaikan (Ribu Rupiah/Orang/Tahun)': 'Pengeluaran Per Kapita',
+        'Umur Harapan Hidup (Tahun)': 'Umur Harapan Hidup',
+        'Persentase rumah tangga yang memiliki akses terhadap sanitasi layak': 'Akses Sanitasi Layak',
+        'Persentase rumah tangga yang memiliki akses terhadap air minum layak': 'Akses Air Minum Layak',
+        'Tingkat Pengangguran Terbuka': 'Tingkat Pengangguran Terbuka',
+        'Tingkat Partisipasi Angkatan Kerja': 'Tingkat Partisipasi Angkatan Kerja',
         'PDRB atas Dasar Harga Konstan menurut Pengeluaran (Rupiah)': 'PDRB',
-        # 'Kepadatan Penduduk' tidak ada di CSV, tetapi didefinisikan untuk konsistensi
     }
 
     # Filter kolom yang ada di DataFrame untuk menghindari KeyError
@@ -115,7 +119,7 @@ def run_eda_page():
         st.write("Scatter plot di bawah ini memvisualisasikan hubungan antara setiap fitur input dengan persentase kemiskinan.")
         
         # Kolom fitur untuk visualisasi
-        all_feature_cols = ['Pengeluaran Per Kapita', 'Rata-Rata Lama Sekolah', 'APM SMP', 'Kepadatan Penduduk']
+        all_feature_cols = ['Pengeluaran Per Kapita', 'Rata-Rata Lama Sekolah', 'Indeks Pembangunan Manusia']
         # Filter fitur yang benar-benar ada di DataFrame untuk menghindari error
         available_feature_cols = [col for col in all_feature_cols if col in df_processed.columns]
 
@@ -178,16 +182,21 @@ def run_map_page():
             if province_name in df_provinsi_indexed.index:
                 province_data = df_provinsi_indexed.loc[province_name] # type: ignore
                 popup_content = f"""
-                <div style="font-family: Arial, sans-serif; width: 280px;">
-                <h4 style="margin-bottom:10px; text-align:center;">{province_name}</h4>
+                <div style="font-family: Arial, sans-serif; width: 320px;">
+                <h4 style="margin: 5px 0; text-align:center;">{province_name}</h4>
                 <table style="width:100%;">
-                    <tr><td style="padding: 4px;">Persentase Kemiskinan (P0)</td><td style="padding: 4px; text-align: right;"><b>{province_data.get('Persentase Kemiskinan (P0)', 0):.2f}%</b></td></tr>
-                    <tr><td style="padding: 4px;">Pengeluaran Per Kapita</td><td style="padding: 4px; text-align: right;"><b>Rp {province_data.get('Pengeluaran Per Kapita', 0):,.0f}</b></td></tr>
-                    <tr><td style="padding: 4px;">Rata-Rata Lama Sekolah</td><td style="padding: 4px; text-align: right;"><b>{province_data.get('Rata-Rata Lama Sekolah', 0):.1f} thn</b></td></tr>
-                    <tr><td style="padding: 4px;">APM SMP (proksi IPM)</td><td style="padding: 4px; text-align: right;"><b>{province_data.get('APM SMP', 0):.1f}</b></td></tr>
-                    <tr><td style="padding: 4px;">PDRB</td><td style="padding: 4px; text-align: right;"><b>Rp {province_data.get('PDRB', 0):,.0f}</b></td></tr>
+                    <tr><td style="padding: 3px;">Indeks Pembangunan Manusia</td><td style="padding: 3px; text-align: right;"><b>{province_data.get('Indeks Pembangunan Manusia', 0):.2f}</b></td></tr>
+                    <tr><td style="padding: 3px;">Persentase Penduduk Miskin</td><td style="padding: 3px; text-align: right;"><b>{province_data.get('Persentase Kemiskinan (P0)', 0):.2f}%</b></td></tr>
+                    <tr><td style="padding: 3px;">Rata-rata Lama Sekolah</td><td style="padding: 3px; text-align: right;"><b>{province_data.get('Rata-Rata Lama Sekolah', 0):.2f} Tahun</b></td></tr>
+                    <tr><td style="padding: 3px;">Pengeluaran per Kapita</td><td style="padding: 3px; text-align: right;"><b>{province_data.get('Pengeluaran Per Kapita', 0):,.0f} Ribu Rupiah</b></td></tr>
+                    <tr><td style="padding: 3px;">Umur Harapan Hidup</td><td style="padding: 3px; text-align: right;"><b>{province_data.get('Umur Harapan Hidup', 0):.2f} Tahun</b></td></tr>
+                    <tr><td style="padding: 3px;">Akses Sanitasi Layak</td><td style="padding: 3px; text-align: right;"><b>{province_data.get('Akses Sanitasi Layak', 0):.2f}%</b></td></tr>
+                    <tr><td style="padding: 3px;">Akses Air Minum Layak</td><td style="padding: 3px; text-align: right;"><b>{province_data.get('Akses Air Minum Layak', 0):.2f}%</b></td></tr>
+                    <tr><td style="padding: 3px;">Tingkat Pengangguran Terbuka</td><td style="padding: 3px; text-align: right;"><b>{province_data.get('Tingkat Pengangguran Terbuka', 0):.2f}%</b></td></tr>
+                    <tr><td style="padding: 3px;">Tingkat Partisipasi Angkatan Kerja</td><td style="padding: 3px; text-align: right;"><b>{province_data.get('Tingkat Partisipasi Angkatan Kerja', 0):.2f}%</b></td></tr>
+                    <tr><td style="padding: 3px;">PDRB atas Dasar Harga Konstan</td><td style="padding: 3px; text-align: right;"><b>{province_data.get('PDRB', 0):,.0f} Rupiah</b></td></tr>
                 </table>
-                <p style="font-size: 10px; text-align: center; margin-top: 10px;"><i>*Data merupakan rata-rata dari kab/kota</i></p>
+                <p style="font-size: 10px; text-align: center; margin-top: 8px;"><i>*Data merupakan rata-rata dari kab/kota di provinsi tersebut</i></p>
                 </div>
                 """
                 folium.GeoJson(
