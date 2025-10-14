@@ -35,6 +35,7 @@ def preprocess_data(df):
     # Peta untuk mengganti nama kolom yang panjang
     column_mapping = {
         'Provinsi': 'Provinsi',
+        'Kab/Kota': 'Kab/Kota',
         'Indeks Pembangunan Manusia': 'Indeks Pembangunan Manusia',
         'Persentase Penduduk Miskin (P0) Menurut Kabupaten/Kota (Persen)': 'Persentase Kemiskinan (P0)',
         'Rata-rata Lama Sekolah Penduduk 15+ (Tahun)': 'Rata-Rata Lama Sekolah',
