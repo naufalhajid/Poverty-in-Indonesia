@@ -7,12 +7,13 @@ import joblib
 import seaborn as sns
 import matplotlib.pyplot as plt
 import folium
+import requests
 from streamlit_folium import st_folium
 import os
 
 # Konfigurasi Halaman Streamlit
 st.set_page_config(
-    page_title="Prediksi Kemiskinan di Indonesia",
+    page_title="Analisis Kemiskinan di Indonesia",
     page_icon="🇮🇩",
     layout="wide",
     initial_sidebar_state="expanded"
@@ -20,8 +21,8 @@ st.set_page_config(
 
 # --- KONSTANTA PATH ---
 DATA_PATH = 'data/df_cleaned.csv'
-GEOJSON_PATH = 'data/prov 34.geojson'
-GEOJSON_PROVINCE_KEY = 'feature.properties.name'
+GEOJSON_URL = 'https://raw.githubusercontent.com/JfrAziz/indonesia-district/refs/heads/master/prov%2034%20simplified.geojson'
+GEOJSON_PROVINCE_KEY = 'feature.properties.name' # Kunci pada GeoJSON untuk mencocokkan nama provinsi
 
 
 
@@ -62,14 +63,16 @@ def preprocess_data(df):
 
 # --- FUNGSI UNTUK MEMUAT DATA GEOJSON ---
 @st.cache_data
-def load_geojson(geojson_path):
+def load_geojson(url):
     """
-    Memuat data GeoJSON dari file.
+    Memuat data GeoJSON dari URL.
     """
     try:
-        with open(geojson_path) as f:
-            return f.read()
-    except FileNotFoundError:
+        response = requests.get(url)
+        response.raise_for_status()  # Akan raise error jika status code bukan 200
+        return response.json()
+    except requests.exceptions.RequestException as e:
+        st.error(f"Gagal memuat data GeoJSON dari URL: {e}")
         return None
 
 # --- FUNGSI UNTUK MEMUAT DATA DAN MODEL ---
@@ -145,10 +148,10 @@ def run_map_page():
     st.write("Peta ini memvisualisasikan persentase kemiskinan (P0) di setiap provinsi. Klik pada sebuah provinsi untuk melihat detailnya.")
 
     # Memuat data
-    _, df_provinsi = load_data(DATA_PATH)
-    geojson_data = load_geojson(GEOJSON_PATH)
+    df_processed, df_provinsi = load_data(DATA_PATH)
+    geojson_data = load_geojson(GEOJSON_URL)
 
-    if df_provinsi is not None and geojson_data is not None:
+    if df_provinsi is not None and geojson_data is not None and df_processed is not None:
         # Validasi: Pastikan kolom yang diperlukan untuk peta ada di DataFrame
         required_map_cols = ['Provinsi', 'Persentase Kemiskinan (P0)']
         if not all(col in df_provinsi.columns for col in required_map_cols):
@@ -156,58 +159,109 @@ def run_map_page():
             st.info("Mohon periksa kembali file `df_cleaned.csv` dan pastikan nama kolomnya sesuai dengan yang diharapkan dalam fungsi `preprocess_data`.")
             return
 
+        # --- 4. Tambahkan Data Relevan ke GeoJSON untuk Tooltip dan Popup ---
+        df_provinsi_indexed = df_provinsi.set_index('Provinsi')
+        for feature in geojson_data['features']:
+            # Normalisasi nama provinsi dari GeoJSON
+            province_name = feature['properties'].get('name', '').upper().strip()
+            
+            if province_name in df_provinsi_indexed.index:
+                province_data = df_provinsi_indexed.loc[province_name]
+                # Menyuntikkan data yang sudah diformat ke properti GeoJSON
+                feature['properties']['IPM_DISPLAY'] = f"{province_data.get('Indeks Pembangunan Manusia', 0):.2f}"
+                feature['properties']['PENDUDUK_MISKIN'] = f"{province_data.get('Persentase Kemiskinan (P0)', 0):.2f}%"
+                feature['properties']['LAMA_SEKOLAH'] = f"{province_data.get('Rata-Rata Lama Sekolah', 0):.2f} Tahun"
+                feature['properties']['PENGELUARAN_KAPITA'] = f"{province_data.get('Pengeluaran Per Kapita', 0):,.0f} Ribu Rupiah"
+                feature['properties']['UMUR_HARAPAN_HIDUP'] = f"{province_data.get('Umur Harapan Hidup', 0):.2f} Tahun"
+                feature['properties']['SANITASI_LAYAK'] = f"{province_data.get('Akses Sanitasi Layak', 0):.2f}%"
+                feature['properties']['AIR_MINUM_LAYAK'] = f"{province_data.get('Akses Air Minum Layak', 0):.2f}%"
+                feature['properties']['PENGANGGURAN'] = f"{province_data.get('Tingkat Pengangguran Terbuka', 0):.2f}%"
+                feature['properties']['ANGKATAN_KERJA'] = f"{province_data.get('Tingkat Partisipasi Angkatan Kerja', 0):.2f}%"
+                feature['properties']['PDRB'] = f"{province_data.get('PDRB', 0):,.0f} Rupiah"
+            else:
+                # Menangani jika provinsi dari GeoJSON tidak ada di data CSV
+                for prop in ['IPM_DISPLAY', 'PENDUDUK_MISKIN', 'LAMA_SEKOLAH', 'PENGELUARAN_KAPITA', 'UMUR_HARAPAN_HIDUP', 'SANITASI_LAYAK', 'AIR_MINUM_LAYAK', 'PENGANGGURAN', 'ANGKATAN_KERJA', 'PDRB']:
+                    feature['properties'][prop] = "Data Tidak Tersedia"
+
         # Membuat peta folium
         # Koordinat tengah Indonesia
-        map_center = [-2.548926, 118.0148634]
-        m = folium.Map(location=map_center, zoom_start=5)
+        m = folium.Map(location=[-2.5, 118.0], zoom_start=5, tiles='OpenStreetMap')
 
         # Membuat peta Choropleth
-        choropleth = folium.Choropleth(
-            geo_data=GEOJSON_PATH,
-            name='choropleth',
+        folium.Choropleth(
+            geo_data=geojson_data,
+            name='IPM Choropleth',
             data=df_provinsi,
-            columns=['Provinsi', 'Persentase Kemiskinan (P0)'], # Gunakan data provinsi yang sudah diagregasi
+            columns=['Provinsi', 'Indeks Pembangunan Manusia'],
             key_on=GEOJSON_PROVINCE_KEY,
-            fill_color='YlOrRd',
-            fill_opacity=0.7,
-            line_opacity=0.2,
-            legend_name='Persentase Kemiskinan (%)'
+            fill_color='YlGnBu',
+            fill_opacity=0.8,
+            line_opacity=0.4,
+            line_color='black',
+            line_weight=0.5,
+            legend_name='Indeks Pembangunan Manusia (Poin)',
+            highlight=True
         ).add_to(m)
 
-        # Menambahkan popup dengan informasi detail
-        # Pastikan kolom 'Provinsi' di df cocok dengan 'feature.properties.state' di GeoJSON
-        df_provinsi_indexed = df_provinsi.set_index('Provinsi')
-        for feature in choropleth.geojson.data['features']:
-            province_name = feature['properties'].get(GEOJSON_PROVINCE_KEY.split('.')[-1])
-            if province_name in df_provinsi_indexed.index:
-                province_data = df_provinsi_indexed.loc[province_name] # type: ignore
-                popup_content = f"""
-                <div style="font-family: Arial, sans-serif; width: 320px;">
-                <h4 style="margin: 5px 0; text-align:center;">{province_name}</h4>
-                <table style="width:100%;">
-                    <tr><td style="padding: 3px;">Indeks Pembangunan Manusia</td><td style="padding: 3px; text-align: right;"><b>{province_data.get('Indeks Pembangunan Manusia', 0):.2f}</b></td></tr>
-                    <tr><td style="padding: 3px;">Persentase Penduduk Miskin</td><td style="padding: 3px; text-align: right;"><b>{province_data.get('Persentase Kemiskinan (P0)', 0):.2f}%</b></td></tr>
-                    <tr><td style="padding: 3px;">Rata-rata Lama Sekolah</td><td style="padding: 3px; text-align: right;"><b>{province_data.get('Rata-Rata Lama Sekolah', 0):.2f} Tahun</b></td></tr>
-                    <tr><td style="padding: 3px;">Pengeluaran per Kapita</td><td style="padding: 3px; text-align: right;"><b>{province_data.get('Pengeluaran Per Kapita', 0):,.0f} Ribu Rupiah</b></td></tr>
-                    <tr><td style="padding: 3px;">Umur Harapan Hidup</td><td style="padding: 3px; text-align: right;"><b>{province_data.get('Umur Harapan Hidup', 0):.2f} Tahun</b></td></tr>
-                    <tr><td style="padding: 3px;">Akses Sanitasi Layak</td><td style="padding: 3px; text-align: right;"><b>{province_data.get('Akses Sanitasi Layak', 0):.2f}%</b></td></tr>
-                    <tr><td style="padding: 3px;">Akses Air Minum Layak</td><td style="padding: 3px; text-align: right;"><b>{province_data.get('Akses Air Minum Layak', 0):.2f}%</b></td></tr>
-                    <tr><td style="padding: 3px;">Tingkat Pengangguran Terbuka</td><td style="padding: 3px; text-align: right;"><b>{province_data.get('Tingkat Pengangguran Terbuka', 0):.2f}%</b></td></tr>
-                    <tr><td style="padding: 3px;">Tingkat Partisipasi Angkatan Kerja</td><td style="padding: 3px; text-align: right;"><b>{province_data.get('Tingkat Partisipasi Angkatan Kerja', 0):.2f}%</b></td></tr>
-                    <tr><td style="padding: 3px;">PDRB atas Dasar Harga Konstan</td><td style="padding: 3px; text-align: right;"><b>{province_data.get('PDRB', 0):,.0f} Rupiah</b></td></tr>
-                </table>
-                <p style="font-size: 10px; text-align: center; margin-top: 8px;"><i>*Data merupakan rata-rata dari kab/kota di provinsi tersebut</i></p>
-                </div>
-                """
-                folium.GeoJson(
-                    feature,
-                    popup=folium.Popup(popup_content)
-                ).add_to(m)
+        # --- 5. Buat Objek Tooltip dan Popup ---
+        tooltip = folium.features.GeoJsonTooltip(
+            fields=['name', 'IPM_DISPLAY'],
+            aliases=['Provinsi:', 'Indeks Pembangunan Manusia:'],
+            localize=True,
+            sticky=False,
+            style=("background-color: white; color: #333333; font-family: arial; font-size: 12px; padding: 10px;")
+        )
+
+        popup = folium.features.GeoJsonPopup(
+            fields=[
+                'name',
+                'IPM_DISPLAY',
+                'PENDUDUK_MISKIN',
+                'LAMA_SEKOLAH',
+                'PENGELUARAN_KAPITA',
+                'UMUR_HARAPAN_HIDUP',
+                'SANITASI_LAYAK',
+                'AIR_MINUM_LAYAK',
+                'PENGANGGURAN',
+                'ANGKATAN_KERJA',
+                'PDRB'
+                ],
+            aliases=[
+                'Provinsi:',
+                'Indeks Pembangunan Manusia:',
+                'Persentase Penduduk Miskin:',
+                'Rata-rata Lama Sekolah:',
+                'Pengeluaran per Kapita Disesuaikan:',
+                'Umur Harapan Hidup:',
+                'Akses Sanitasi Layak:',
+                'Akses Air Minum Layak:',
+                'Tingkat Pengangguran Terbuka:',
+                'Tingkat Partisipasi Angkatan Kerja:',
+                'PDRB atas Dasar Harga Konstan:'
+                ],
+            localize=True,
+            sticky=False,
+            labels=True,
+            max_width=400
+        )
+        
+        # --- 6. Buat Objek GeoJson dengan Tooltip dan Popup ---
+        geojson_layer_interactive = folium.features.GeoJson(
+            geojson_data,
+            name='Detail Provinsi',
+            style_function=lambda x: {'fillColor': 'transparent', 'color': 'transparent', 'weight': 0},
+            control=False,
+            tooltip=tooltip, # Pass the tooltip object
+            popup=popup      # Pass the popup object
+        )
+        geojson_layer_interactive.add_to(m)
+
+        folium.LayerControl().add_to(m)
 
         # Menampilkan peta di Streamlit
         st_folium(m, width=None, height=500, use_container_width=True)
     else:
-        st.error(f"❌ **File tidak ditemukan:** Pastikan `{os.path.basename(DATA_PATH)}` dan `{os.path.basename(GEOJSON_PATH)}` ada di dalam folder `data/`.")
+        st.error(f"❌ **File tidak ditemukan:** Pastikan file `{os.path.basename(DATA_PATH)}` ada di dalam folder `data/` atau URL GeoJSON valid.")
 
 # --- FUNGSI UTAMA (MAIN) ---
 
