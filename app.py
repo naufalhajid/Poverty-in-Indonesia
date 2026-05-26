@@ -1,3 +1,11 @@
+from pathlib import Path
+import copy
+import json
+import os
+import tempfile
+
+os.environ.setdefault("MPLCONFIGDIR", str(Path(tempfile.gettempdir()) / "poverty_dashboard_matplotlib"))
+
 import streamlit as st
 import pandas as pd
 import numpy as np
@@ -6,7 +14,6 @@ import matplotlib.pyplot as plt
 import folium
 import requests
 from streamlit_folium import st_folium
-import os
 
 # Konfigurasi Halaman Streamlit
 st.set_page_config(
@@ -17,9 +24,44 @@ st.set_page_config(
 )
 
 # --- KONSTANTA PATH ---
-DATA_PATH = 'data/df_cleaned.csv'
+BASE_DIR = Path(__file__).resolve().parent
+DATA_PATH = BASE_DIR / 'data' / 'df_cleaned.csv'
+LOCAL_GEOJSON_PATH = BASE_DIR / 'data' / 'prov 34.geojson'
 GEOJSON_URL = 'https://raw.githubusercontent.com/JfrAziz/indonesia-district/refs/heads/master/prov%2034%20simplified.geojson'
 GEOJSON_PROVINCE_KEY = 'feature.properties.name'
+
+COLUMN_MAPPING = {
+    'Provinsi': 'Provinsi',
+    'Kab/Kota': 'Kab/Kota',
+    'Indeks Pembangunan Manusia': 'Indeks Pembangunan Manusia',
+    'Persentase Penduduk Miskin (P0) Menurut Kabupaten/Kota (Persen)': 'Persentase Kemiskinan (P0)',
+    'Rata-rata Lama Sekolah Penduduk 15+ (Tahun)': 'Rata-Rata Lama Sekolah',
+    'Pengeluaran per Kapita Disesuaikan (Ribu Rupiah/Orang/Tahun)': 'Pengeluaran Per Kapita',
+    'Umur Harapan Hidup (Tahun)': 'Umur Harapan Hidup',
+    'Persentase rumah tangga yang memiliki akses terhadap sanitasi layak': 'Akses Sanitasi Layak',
+    'Persentase rumah tangga yang memiliki akses terhadap air minum layak': 'Akses Air Minum Layak',
+    'Tingkat Pengangguran Terbuka': 'Tingkat Pengangguran Terbuka',
+    'Tingkat Partisipasi Angkatan Kerja': 'Tingkat Partisipasi Angkatan Kerja',
+    'PDRB atas Dasar Harga Konstan menurut Pengeluaran (Rupiah)': 'PDRB',
+}
+
+REQUIRED_COLUMNS = [
+    'Provinsi',
+    'Persentase Penduduk Miskin (P0) Menurut Kabupaten/Kota (Persen)',
+]
+
+NUMERIC_COLUMNS = [
+    'Indeks Pembangunan Manusia',
+    'Persentase Kemiskinan (P0)',
+    'Rata-Rata Lama Sekolah',
+    'Pengeluaran Per Kapita',
+    'Umur Harapan Hidup',
+    'Akses Sanitasi Layak',
+    'Akses Air Minum Layak',
+    'Tingkat Pengangguran Terbuka',
+    'Tingkat Partisipasi Angkatan Kerja',
+    'PDRB',
+]
 
 # --- CUSTOM CSS ---
 def load_css():
@@ -53,25 +95,21 @@ def preprocess_data(df):
     """
     Membersihkan, memproses, dan mengagregasi DataFrame.
     """
-    # Peta untuk mengganti nama kolom yang panjang
-    column_mapping = {
-        'Provinsi': 'Provinsi',
-        'Indeks Pembangunan Manusia': 'Indeks Pembangunan Manusia',
-        'Persentase Penduduk Miskin (P0) Menurut Kabupaten/Kota (Persen)': 'Persentase Kemiskinan (P0)',
-        'Rata-rata Lama Sekolah Penduduk 15+ (Tahun)': 'Rata-Rata Lama Sekolah',
-        'Pengeluaran per Kapita Disesuaikan (Ribu Rupiah/Orang/Tahun)': 'Pengeluaran Per Kapita',
-        'Umur Harapan Hidup (Tahun)': 'Umur Harapan Hidup',
-        'Persentase rumah tangga yang memiliki akses terhadap sanitasi layak': 'Akses Sanitasi Layak',
-        'Persentase rumah tangga yang memiliki akses terhadap air minum layak': 'Akses Air Minum Layak',
-        'Tingkat Pengangguran Terbuka': 'Tingkat Pengangguran Terbuka',
-        'Tingkat Partisipasi Angkatan Kerja': 'Tingkat Partisipasi Angkatan Kerja',
-        'PDRB atas Dasar Harga Konstan menurut Pengeluaran (Rupiah)': 'PDRB',
-    }
+    missing_columns = [col for col in REQUIRED_COLUMNS if col not in df.columns]
+    if missing_columns:
+        raise ValueError(f"Kolom wajib tidak ditemukan: {', '.join(missing_columns)}")
 
     # Filter kolom yang ada di DataFrame
-    valid_columns = {k: v for k, v in column_mapping.items() if k in df.columns}
+    valid_columns = {k: v for k, v in COLUMN_MAPPING.items() if k in df.columns}
     df_processed = df[list(valid_columns.keys())].copy()
     df_processed.rename(columns=valid_columns, inplace=True)
+
+    for column in NUMERIC_COLUMNS:
+        if column in df_processed.columns:
+            df_processed[column] = pd.to_numeric(
+                df_processed[column].astype(str).str.strip().str.replace(',', '.', regex=False),
+                errors='coerce'
+            )
 
     # Konversi Pengeluaran Per Kapita dari tahunan ke bulanan
     if 'Pengeluaran Per Kapita' in df_processed.columns:
@@ -79,28 +117,79 @@ def preprocess_data(df):
 
     # Normalisasi nama provinsi
     if 'Provinsi' in df_processed.columns:
-        df_processed['Provinsi'] = df_processed['Provinsi'].str.upper().str.strip()
+        df_processed['Provinsi'] = df_processed['Provinsi'].astype(str).str.upper().str.strip()
 
-    # Agregasi data ke tingkat provinsi
+    invalid_provinces = df_processed['Provinsi'].isin(['', 'NAN', 'NONE'])
+    if df_processed['Provinsi'].isna().any() or invalid_provinces.any():
+        raise ValueError("Kolom Provinsi memiliki nilai kosong.")
+
+    invalid_numeric_columns = [
+        col for col in NUMERIC_COLUMNS
+        if col in df_processed.columns and df_processed[col].isna().any()
+    ]
+    if invalid_numeric_columns:
+        raise ValueError(f"Kolom numerik memiliki nilai tidak valid: {', '.join(invalid_numeric_columns)}")
+
+    # Agregasi data ke tingkat provinsi dengan rata-rata sederhana kabupaten/kota.
     df_provinsi = df_processed.groupby('Provinsi').mean(numeric_only=True).reset_index()
 
     return df_processed, df_provinsi
 
 @st.cache_data
-def load_geojson(url):
+def load_geojson(local_path, fallback_url=None):
     """
-    Memuat data GeoJSON dari URL dengan error handling.
+    Memuat data GeoJSON lokal terlebih dahulu, lalu URL cadangan jika perlu.
     """
+    local_path = Path(local_path)
+    if local_path.exists():
+        try:
+            with local_path.open(encoding='utf-8') as file:
+                geojson_data = json.load(file)
+            validate_geojson(geojson_data)
+            return geojson_data
+        except (OSError, json.JSONDecodeError, ValueError) as e:
+            st.error(f"❌ **Gagal memuat GeoJSON lokal:** {str(e)}")
+            if fallback_url is None:
+                return None
+
+    if fallback_url is None:
+        st.error(f"❌ **File GeoJSON tidak ditemukan:** `{local_path}`")
+        return None
+
     try:
-        response = requests.get(url, timeout=10)
+        response = requests.get(fallback_url, timeout=10)
         response.raise_for_status()
-        return response.json()
+        geojson_data = response.json()
+        validate_geojson(geojson_data)
+        return geojson_data
     except requests.exceptions.Timeout:
         st.error("⏱️ **Timeout:** Koneksi ke server GeoJSON terlalu lama. Coba refresh halaman.")
         return None
     except requests.exceptions.RequestException as e:
         st.error(f"❌ **Gagal memuat GeoJSON:** {str(e)}")
         return None
+    except ValueError as e:
+        st.error(f"❌ **Format GeoJSON tidak valid:** {str(e)}")
+        return None
+
+def validate_geojson(geojson_data):
+    """Validate the minimal GeoJSON contract needed by the dashboard."""
+    if not isinstance(geojson_data, dict):
+        raise ValueError("GeoJSON harus berupa object JSON.")
+
+    if geojson_data.get('type') != 'FeatureCollection':
+        raise ValueError("GeoJSON harus bertipe FeatureCollection.")
+
+    features = geojson_data.get('features')
+    if not isinstance(features, list) or not features:
+        raise ValueError("GeoJSON tidak memiliki daftar features.")
+
+    missing_name = [
+        idx for idx, feature in enumerate(features, start=1)
+        if not isinstance(feature, dict) or not feature.get('properties', {}).get('name')
+    ]
+    if missing_name:
+        raise ValueError(f"Properti name kosong pada feature: {missing_name[:5]}")
 
 @st.cache_data
 def load_data(data_path):
@@ -108,7 +197,8 @@ def load_data(data_path):
     Memuat dan memproses data kemiskinan dari file CSV.
     """
     try:
-        if not os.path.exists(data_path):
+        data_path = Path(data_path)
+        if not data_path.exists():
             st.error(f"❌ **File tidak ditemukan:** `{data_path}`")
             st.info("💡 **Tips untuk deployment:**\n"
                    "- Pastikan folder `data/` dan file `df_cleaned.csv` ada di repository\n"
@@ -119,7 +209,7 @@ def load_data(data_path):
         df = pd.read_csv(data_path)
         df_processed, df_provinsi = preprocess_data(df)
         return df_processed, df_provinsi
-    except Exception as e:
+    except (OSError, pd.errors.ParserError, ValueError) as e:
         st.error(f"❌ **Error memuat data:** {str(e)}")
         return None, None
 
@@ -204,6 +294,7 @@ def run_eda_page():
         with col4:
             total_features = len(df_processed.select_dtypes(include=np.number).columns)
             st.metric("Jumlah Fitur", total_features)
+        st.caption("Catatan: ringkasan provinsi menggunakan rata-rata sederhana dari kabupaten/kota yang tersedia.")
 
         # Data Preview
         st.subheader("📋 Pratinjau Data")
@@ -244,6 +335,8 @@ def run_eda_page():
 
 def create_folium_map(df_provinsi, geojson_data):
     """Create interactive folium map"""
+    geojson_data = copy.deepcopy(geojson_data)
+
     # Prepare GeoJSON with data
     df_provinsi_indexed = df_provinsi.set_index('Provinsi')
     
@@ -348,7 +441,7 @@ def run_map_page():
 
     with st.spinner("Memuat peta..."):
         df_processed, df_provinsi = load_data(DATA_PATH)
-        geojson_data = load_geojson(GEOJSON_URL)
+        geojson_data = load_geojson(LOCAL_GEOJSON_PATH, GEOJSON_URL)
 
     if df_provinsi is not None and geojson_data is not None:
         required_cols = ['Provinsi', 'Persentase Kemiskinan (P0)']
@@ -356,9 +449,24 @@ def run_map_page():
             st.error(f"❌ **Kolom yang diperlukan tidak ditemukan:** {required_cols}")
             return
 
+        geojson_provinces = {
+            feature['properties']['name'].upper().strip()
+            for feature in geojson_data.get('features', [])
+        }
+        data_provinces = set(df_provinsi['Provinsi'])
+        missing_in_geojson = sorted(data_provinces - geojson_provinces)
+        missing_in_data = sorted(geojson_provinces - data_provinces)
+        if missing_in_geojson or missing_in_data:
+            st.warning(
+                "⚠️ Ada perbedaan nama provinsi antara data dan GeoJSON. "
+                f"Tidak ada di GeoJSON: {missing_in_geojson or '-'}; "
+                f"Tidak ada di data: {missing_in_data or '-'}."
+            )
+
         # Display map
         m = create_folium_map(df_provinsi, geojson_data)
         st_folium(m, width=None, height=600, use_container_width=True)
+        st.caption("Catatan: angka provinsi dihitung sebagai rata-rata sederhana kabupaten/kota dalam dataset.")
 
         # Summary statistics
         st.subheader("📊 Ringkasan Statistik Provinsi")
@@ -404,13 +512,13 @@ def main():
     st.sidebar.markdown("---")
     st.sidebar.markdown("### 📖 Tentang")
     st.sidebar.info(
-        "Dashboard ini menampilkan analisis kemiskinan di Indonesia "
-        "berdasarkan data dari berbagai indikator pembangunan manusia."
+        "Dashboard publik untuk eksplorasi indikator kemiskinan dan pembangunan "
+        "di tingkat kabupaten/kota serta agregasi provinsi."
     )
     
     st.sidebar.markdown("### 🔗 Sumber Data")
-    st.sidebar.markdown("- Badan Pusat Statistik (BPS)")
-    st.sidebar.markdown("- Open Data Indonesia")
+    st.sidebar.markdown("- Dataset indikator sosial-ekonomi lokal")
+    st.sidebar.markdown("- Batas provinsi lokal `data/prov 34.geojson`")
 
     # Route to selected page
     if page_options[selected_page] == "map":

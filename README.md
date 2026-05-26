@@ -1,118 +1,84 @@
-<div align="center">
-  <h1>🇮🇩 Dashboard Analisis Kemiskinan di Indonesia</h1>
-  <p>
-    Aplikasi web interaktif untuk memvisualisasikan dan menganalisis data kemiskinan serta indikator pembangunan lainnya di seluruh provinsi di Indonesia.
-  </p>
-  <a href="#"><img src="https://static.streamlit.io/badges/streamlit_badge_black_white.svg" alt="Streamlit App"></a>
-</div>
+# Dashboard Analisis Kemiskinan di Indonesia
 
----
+Aplikasi Streamlit untuk mengeksplorasi indikator kemiskinan dan pembangunan di Indonesia melalui peta provinsi interaktif, ringkasan statistik, heatmap korelasi, dan scatter plot.
 
-## 🎯 Tujuan Proyek
+Project ini diposisikan sebagai **dashboard publik eksploratif**, bukan aplikasi prediksi machine learning. Artefak model di folder `Model/` berasal dari notebook eksperimen dan belum digunakan oleh aplikasi utama.
 
-Proyek ini bertujuan untuk menyediakan platform yang mudah digunakan bagi para analis, peneliti, atau masyarakat umum untuk:
-1.  **Memahami sebaran geografis** indikator sosial-ekonomi di Indonesia.
-2.  **Menganalisis hubungan** antar berbagai variabel seperti tingkat kemiskinan, IPM, dan pengeluaran per kapita.
-3.  Menyajikan data yang kompleks dalam format visual yang **intuitif dan interaktif**.
+## Fitur
 
----
+- Peta choropleth provinsi berbasis Folium.
+- Tooltip dan popup detail untuk setiap provinsi.
+- Ringkasan provinsi dengan tingkat kemiskinan tertinggi dan terendah.
+- Halaman EDA dengan statistik deskriptif, heatmap korelasi, scatter plot, dan pratinjau data.
+- Validasi data dasar saat aplikasi dijalankan.
+- GeoJSON lokal sebagai sumber utama agar batas provinsi tidak bergantung penuh pada URL eksternal.
 
-## ✨ Fitur Unggulan
+## Data
 
-🗺️ **Peta Choropleth Interaktif**
--   Visualisasi data provinsi yang diwarnai berdasarkan tingkat kemiskinan.
--   Legenda dinamis untuk interpretasi data yang mudah.
--   Efek *highlight* saat kursor diarahkan ke sebuah provinsi.
+- Dataset utama: `data/df_cleaned.csv`
+- GeoJSON provinsi: `data/prov 34.geojson`
+- Dataset mentah: `data/Klasifikasi Tingkat Kemiskinan di Indonesia.csv`
 
-🖱️ **Tooltip & Popup Detail**
--   **Tooltip Cepat**: Arahkan kursor ke provinsi untuk melihat nama dan persentase kemiskinan secara instan.
--   **Popup Komprehensif**: Klik pada provinsi untuk menampilkan jendela detail berisi berbagai metrik penting seperti IPM, Rata-rata Lama Sekolah, Umur Harapan Hidup, dan lainnya.
+Dataset bersih berisi data kabupaten/kota dan diagregasi ke tingkat provinsi dengan rata-rata sederhana. Karena itu, angka provinsi di dashboard sebaiknya dibaca sebagai rata-rata kabupaten/kota dalam dataset, bukan estimasi berbobot populasi.
 
-📊 **Halaman Analisis Data Eksplorasi (EDA)**
--   **Heatmap Korelasi**: Membantu mengidentifikasi hubungan positif atau negatif antar variabel.
--   **Scatter Plot**: Memvisualisasikan hubungan antara tingkat kemiskinan dengan fitur-fitur lainnya.
--   **Pratinjau Data**: Tampilan tabel dari dataset yang telah dibersihkan.
+## Struktur Project
 
-⚡ **Arsitektur Aplikasi yang Efisien**
--   **Pemuatan Data dari URL**: GeoJSON dimuat secara dinamis dari repositori eksternal, membuat aplikasi lebih ringan.
--   **Caching Cerdas**: Menggunakan decorator `@st.cache_data` untuk memuat dan memproses data hanya sekali, memastikan navigasi antar halaman yang sangat cepat.
+```text
+.
+├── app.py
+├── requirements.txt
+├── data/
+│   ├── df_cleaned.csv
+│   ├── Klasifikasi Tingkat Kemiskinan di Indonesia.csv
+│   └── prov 34.geojson
+├── Model/
+│   ├── scaler.pkl
+│   └── xgb_poverty_model.pkl
+├── Notebook/
+│   └── Poverty_in_Indonesia.ipynb
+└── tests/
+    └── test_data_contract.py
+```
 
----
+## Menjalankan Lokal
 
-## 📚 Sumber Data dan Pra-pemrosesan
+Pastikan Python 3.9 atau versi lebih baru sudah terpasang.
 
-*   **Dataset Utama**: File `data/df_cleaned.csv` berisi kumpulan data indikator sosial-ekonomi di tingkat **Kabupaten/Kota**.
-*   **Data Geografis**: File `prov 34 simplified.geojson` dimuat dari URL publik untuk menyediakan batas-batas wilayah provinsi.
-*   **Pra-pemrosesan Otomatis**: Aplikasi secara cerdas melakukan langkah-langkah berikut saat dijalankan:
-    1.  **Pembersihan Nama Kolom**: Mengubah nama kolom yang panjang menjadi alias yang lebih pendek dan mudah dibaca.
-    2.  **Agregasi Data**: Mengagregasi data dari tingkat Kabupaten/Kota ke tingkat **Provinsi** dengan menghitung nilai rata-rata (`.mean()`). Ini adalah langkah krusial agar data dapat dipetakan ke GeoJSON provinsi.
-    3.  **Injeksi Data**: Menyuntikkan data yang telah diagregasi ke dalam properti GeoJSON untuk digunakan oleh *tooltip* dan *popup*.
-
----
-
-## 🛠️ Teknologi yang Digunakan
-
--   **Framework Aplikasi**: `Streamlit`
--   **Manipulasi Data**: `Pandas`, `NumPy`
--   **Visualisasi Peta**: `Folium`, `streamlit-folium`
--   **Visualisasi Statistik**: `Seaborn`, `Matplotlib`
--   **Permintaan Jaringan**: `Requests`
-
----
-
-## ⚙️ Panduan Instalasi dan Penggunaan Lokal
-
-#### 1. Prasyarat
-Pastikan Anda memiliki **Python 3.9** atau versi yang lebih baru terinstal di sistem Anda.
-
-#### 2. Clone Repositori
-Buka terminal Anda dan jalankan perintah berikut untuk meng-clone proyek ini:
 ```bash
 git clone https://github.com/naufalhajid/Poverty-in-Indonesia.git
-```
-
-#### 3. Masuk ke Direktori Proyek
-```bash
-# Gunakan tanda kutip jika nama folder mengandung spasi
-cd "Poverty in Indonesia"
-```
-
-#### 4. Buat dan Aktifkan Virtual Environment (Sangat Direkomendasikan)
-Ini akan mengisolasi dependensi proyek Anda dari instalasi Python global.
-```bash
-# Windows
+cd Poverty-in-Indonesia
 python -m venv venv
-.\venv\Scripts\activate
+```
+
+Aktifkan virtual environment:
+
+```bash
+# Windows PowerShell
+.\venv\Scripts\Activate.ps1
 
 # macOS / Linux
-python3 -m venv venv
 source venv/bin/activate
 ```
 
-#### 5. Instal Dependensi
-Instal semua pustaka yang dibutuhkan dengan satu perintah:
+Instal dependency dan jalankan aplikasi:
+
 ```bash
 pip install -r requirements.txt
-```
-
-#### 6. Jalankan Aplikasi
-Jalankan perintah berikut di terminal Anda:
-```bash
 streamlit run app.py
 ```
 
-Aplikasi akan terbuka secara otomatis di browser default Anda.
+## Verifikasi
 
----
+Jalankan pengecekan sintaks dan kontrak data:
 
-## 📂 Struktur Proyek
-
-```
-.
-├── app.py                  # Kode utama aplikasi Streamlit
-├── requirements.txt        # Daftar dependensi Python
-└── data/
-    └── df_cleaned.csv      # Dataset utama yang berisi indikator sosial-ekonomi
+```bash
+python -m py_compile app.py
+python -m unittest discover -s tests
 ```
 
----
+## Catatan Deployment
+
+- Pastikan folder `data/` ikut terdeploy.
+- Aplikasi memakai `data/prov 34.geojson` sebagai sumber batas provinsi utama.
+- Basemap Folium tetap memakai tile eksternal, sehingga koneksi internet masih dibutuhkan agar layer peta dasar tampil lengkap.
+- `requirements.txt` dibuat untuk runtime dashboard. Dependency machine learning berat seperti `xgboost` tidak diperlukan selama fitur prediksi belum diaktifkan.
