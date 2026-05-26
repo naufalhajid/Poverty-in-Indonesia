@@ -18,7 +18,6 @@ from streamlit_folium import st_folium
 # Konfigurasi Halaman Streamlit
 st.set_page_config(
     page_title="Analisis Kemiskinan di Indonesia",
-    page_icon="🇮🇩",
     layout="wide",
     initial_sidebar_state="expanded"
 )
@@ -148,12 +147,12 @@ def load_geojson(local_path, fallback_url=None):
             validate_geojson(geojson_data)
             return geojson_data
         except (OSError, json.JSONDecodeError, ValueError) as e:
-            st.error(f"❌ **Gagal memuat GeoJSON lokal:** {str(e)}")
+            st.error(f"**Error:** Gagal memuat GeoJSON lokal. {str(e)}")
             if fallback_url is None:
                 return None
 
     if fallback_url is None:
-        st.error(f"❌ **File GeoJSON tidak ditemukan:** `{local_path}`")
+        st.error(f"**Error:** File GeoJSON tidak ditemukan: `{local_path}`")
         return None
 
     try:
@@ -163,13 +162,13 @@ def load_geojson(local_path, fallback_url=None):
         validate_geojson(geojson_data)
         return geojson_data
     except requests.exceptions.Timeout:
-        st.error("⏱️ **Timeout:** Koneksi ke server GeoJSON terlalu lama. Coba refresh halaman.")
+        st.error("**Timeout:** Koneksi ke server GeoJSON terlalu lama. Coba refresh halaman.")
         return None
     except requests.exceptions.RequestException as e:
-        st.error(f"❌ **Gagal memuat GeoJSON:** {str(e)}")
+        st.error(f"**Error:** Gagal memuat GeoJSON. {str(e)}")
         return None
     except ValueError as e:
-        st.error(f"❌ **Format GeoJSON tidak valid:** {str(e)}")
+        st.error(f"**Error:** Format GeoJSON tidak valid. {str(e)}")
         return None
 
 def validate_geojson(geojson_data):
@@ -199,8 +198,8 @@ def load_data(data_path):
     try:
         data_path = Path(data_path)
         if not data_path.exists():
-            st.error(f"❌ **File tidak ditemukan:** `{data_path}`")
-            st.info("💡 **Tips untuk deployment:**\n"
+            st.error(f"**Error:** File tidak ditemukan: `{data_path}`")
+            st.info("**Catatan deployment:**\n"
                    "- Pastikan folder `data/` dan file `df_cleaned.csv` ada di repository\n"
                    "- Upload file melalui GitHub repository Anda\n"
                    "- Periksa struktur folder: `your_repo/data/df_cleaned.csv`")
@@ -210,7 +209,7 @@ def load_data(data_path):
         df_processed, df_provinsi = preprocess_data(df)
         return df_processed, df_provinsi
     except (OSError, pd.errors.ParserError, ValueError) as e:
-        st.error(f"❌ **Error memuat data:** {str(e)}")
+        st.error(f"**Error:** Gagal memuat data. {str(e)}")
         return None, None
 
 def create_correlation_heatmap(df):
@@ -228,7 +227,7 @@ def create_correlation_heatmap(df):
         plt.tight_layout()
         return fig
     else:
-        st.warning("⚠️ Data tidak cukup untuk membuat heatmap korelasi.")
+        st.warning("Data tidak cukup untuk membuat heatmap korelasi.")
         return None
 
 def create_scatter_plots(df):
@@ -244,7 +243,7 @@ def create_scatter_plots(df):
     available_features = [col for col in all_feature_cols if col in df.columns]
     
     if 'Persentase Kemiskinan (P0)' not in df.columns:
-        st.warning("⚠️ Kolom 'Persentase Kemiskinan (P0)' tidak ditemukan.")
+        st.warning("Kolom 'Persentase Kemiskinan (P0)' tidak ditemukan.")
         return
     
     # Create grid layout
@@ -274,7 +273,7 @@ def run_eda_page():
     """
     Halaman Analisis Data Eksplorasi.
     """
-    st.header("📊 Analisis Data Eksplorasi Kemiskinan")
+    st.header("Analisis Data Eksplorasi Kemiskinan")
     st.markdown("---")
     
     with st.spinner("Memuat data..."):
@@ -297,26 +296,26 @@ def run_eda_page():
         st.caption("Catatan: ringkasan provinsi menggunakan rata-rata sederhana dari kabupaten/kota yang tersedia.")
 
         # Data Preview
-        st.subheader("📋 Pratinjau Data")
+        st.subheader("Pratinjau Data")
         with st.expander("Lihat Data"):
             st.dataframe(df_processed.head(20), use_container_width=True)
             
             # Download button
             csv = df_processed.to_csv(index=False)
             st.download_button(
-                label="📥 Download Data CSV",
+                label="Download Data CSV",
                 data=csv,
                 file_name="data_kemiskinan_indonesia.csv",
                 mime="text/csv"
             )
 
         # Descriptive Statistics
-        st.subheader("📈 Statistik Deskriptif")
+        st.subheader("Statistik Deskriptif")
         with st.expander("Lihat Statistik"):
             st.dataframe(df_processed.describe(), use_container_width=True)
 
         # Correlation Heatmap
-        st.subheader("🔥 Heatmap Korelasi Antar Variabel")
+        st.subheader("Heatmap Korelasi Antar Variabel")
         st.write("Heatmap menunjukkan korelasi antar variabel. Nilai mendekati 1 (merah) = korelasi positif kuat, "
                 "mendekati -1 (biru) = korelasi negatif kuat.")
         
@@ -326,12 +325,12 @@ def run_eda_page():
             plt.close()
 
         # Scatter Plots
-        st.subheader("📊 Distribusi Fitur vs Persentase Kemiskinan")
+        st.subheader("Distribusi Fitur vs Persentase Kemiskinan")
         st.write("Visualisasi hubungan antara setiap fitur dengan tingkat kemiskinan.")
         create_scatter_plots(df_processed)
         
     else:
-        st.error("❌ **Gagal memuat data.** Periksa kembali file dan path-nya.")
+        st.error("**Error:** Gagal memuat data. Periksa kembali file dan path-nya.")
 
 def create_folium_map(df_provinsi, geojson_data):
     """Create interactive folium map"""
@@ -435,9 +434,9 @@ def run_map_page():
     """
     Halaman Visualisasi Peta Interaktif.
     """
-    st.header("🗺️ Peta Sebaran Kemiskinan di Indonesia")
+    st.header("Peta Sebaran Kemiskinan di Indonesia")
     st.markdown("---")
-    st.info("💡 **Tip:** Klik pada provinsi untuk melihat detail lengkap atau hover untuk info cepat.")
+    st.info("Klik pada provinsi untuk melihat detail lengkap, atau arahkan kursor untuk informasi cepat.")
 
     with st.spinner("Memuat peta..."):
         df_processed, df_provinsi = load_data(DATA_PATH)
@@ -446,7 +445,7 @@ def run_map_page():
     if df_provinsi is not None and geojson_data is not None:
         required_cols = ['Provinsi', 'Persentase Kemiskinan (P0)']
         if not all(col in df_provinsi.columns for col in required_cols):
-            st.error(f"❌ **Kolom yang diperlukan tidak ditemukan:** {required_cols}")
+            st.error(f"**Error:** Kolom yang diperlukan tidak ditemukan: {required_cols}")
             return
 
         geojson_provinces = {
@@ -458,7 +457,7 @@ def run_map_page():
         missing_in_data = sorted(geojson_provinces - data_provinces)
         if missing_in_geojson or missing_in_data:
             st.warning(
-                "⚠️ Ada perbedaan nama provinsi antara data dan GeoJSON. "
+                "Ada perbedaan nama provinsi antara data dan GeoJSON. "
                 f"Tidak ada di GeoJSON: {missing_in_geojson or '-'}; "
                 f"Tidak ada di data: {missing_in_data or '-'}."
             )
@@ -469,20 +468,20 @@ def run_map_page():
         st.caption("Catatan: angka provinsi dihitung sebagai rata-rata sederhana kabupaten/kota dalam dataset.")
 
         # Summary statistics
-        st.subheader("📊 Ringkasan Statistik Provinsi")
+        st.subheader("Ringkasan Statistik Provinsi")
         col1, col2 = st.columns(2)
         
         with col1:
-            st.markdown("**🔴 5 Provinsi Kemiskinan Tertinggi**")
+            st.markdown("**5 Provinsi Kemiskinan Tertinggi**")
             top_5 = df_provinsi.nlargest(5, 'Persentase Kemiskinan (P0)')[['Provinsi', 'Persentase Kemiskinan (P0)']]
             st.dataframe(top_5.reset_index(drop=True), use_container_width=True)
         
         with col2:
-            st.markdown("**🟢 5 Provinsi Kemiskinan Terendah**")
+            st.markdown("**5 Provinsi Kemiskinan Terendah**")
             bottom_5 = df_provinsi.nsmallest(5, 'Persentase Kemiskinan (P0)')[['Provinsi', 'Persentase Kemiskinan (P0)']]
             st.dataframe(bottom_5.reset_index(drop=True), use_container_width=True)
     else:
-        st.error("❌ **Gagal memuat data peta.** Periksa koneksi internet dan ketersediaan file.")
+        st.error("**Error:** Gagal memuat data peta. Periksa koneksi internet dan ketersediaan file.")
 
 def main():
     """
@@ -491,17 +490,17 @@ def main():
     load_css()
     
     # Header
-    st.title("🇮🇩 Dashboard Analisis Kemiskinan di Indonesia")
+    st.title("Dashboard Analisis Kemiskinan di Indonesia")
     st.markdown("*Dashboard interaktif untuk menganalisis data kemiskinan di Indonesia*")
     st.markdown("---")
 
     # Sidebar
-    st.sidebar.title("📍 Navigasi")
+    st.sidebar.title("Navigasi")
     st.sidebar.markdown("---")
     
     page_options = {
-        "🗺️ Visualisasi Peta": "map",
-        "📊 Analisis Data Eksplorasi": "eda"
+        "Visualisasi Peta": "map",
+        "Analisis Data Eksplorasi": "eda"
     }
     
     selected_page = st.sidebar.radio(
@@ -510,13 +509,13 @@ def main():
     )
 
     st.sidebar.markdown("---")
-    st.sidebar.markdown("### 📖 Tentang")
+    st.sidebar.markdown("### Tentang")
     st.sidebar.info(
         "Dashboard publik untuk eksplorasi indikator kemiskinan dan pembangunan "
         "di tingkat kabupaten/kota serta agregasi provinsi."
     )
     
-    st.sidebar.markdown("### 🔗 Sumber Data")
+    st.sidebar.markdown("### Sumber Data")
     st.sidebar.markdown("- Dataset indikator sosial-ekonomi lokal")
     st.sidebar.markdown("- Batas provinsi lokal `data/prov 34.geojson`")
 
